@@ -30,14 +30,44 @@ A integração foi validada na rede Wi-Fi usada no desenvolvimento e em um hotsp
 
 Na pasta `software`, instale as dependências e crie a configuração local:
 
-```powershell
+```bash
 uv sync
-Copy-Item .env.example .env
+cp .env.example .env
 ```
 
 O arquivo `.env` guarda a configuração local e já está incluído no `.gitignore`.
 
 ## Como executar
+
+### Linux Mint
+
+Instale o Mosquitto e os clientes MQTT pelo gerenciador de pacotes:
+
+```bash
+sudo apt update
+sudo apt install mosquitto mosquitto-clients
+```
+
+Configure o serviço para aceitar conexões da rede local usando a configuração do repositório:
+
+```bash
+sudo install -m 0644 "$(git rev-parse --show-toplevel)/software/config/mosquitto-lan.conf" /etc/mosquitto/conf.d/estacao.conf
+sudo systemctl restart mosquitto
+```
+
+Na raiz do repositório, ajuste `firmware/include/secrets.h` para o IPv4 da interface Wi-Fi do seu PC. Consulte-o com `ip -4 addr`; o ESP32 e o PC precisam estar na mesma rede. O assinante local conecta ao broker em `127.0.0.1`, enquanto o ESP32 conecta ao IPv4 do PC.
+
+Instale as dependências Python uma vez e inicie o fluxo completo:
+
+```bash
+cd software
+uv sync
+./scripts/testar-estacao.sh
+```
+
+O script usa o Mosquitto já ativo ou inicia um broker local com `config/mosquitto-lan.conf`, e também inicia o assinante MQTT e a API. Pressione `Ctrl+C` para encerrar. Se o firewall estiver ativo, permita conexões TCP na porta 1883 pela rede local.
+
+### Windows
 
 ### Teste automático com o ESP32
 
@@ -51,7 +81,7 @@ O script verifica o Mosquitto, inicia o assinante e a API em segundo plano e mos
 
 No Windows, também é possível abrir a pasta `software` e dar duplo clique em `TESTAR_ESTACAO.cmd`.
 
-### Execução manual
+### Execução manual no Windows
 
 Confirme que o Mosquitto está ativo:
 
