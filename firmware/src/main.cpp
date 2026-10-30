@@ -11,7 +11,11 @@ constexpr uint8_t SCL_PIN = 22;
 constexpr uint8_t LDR_PIN = 34;
 constexpr uint8_t MQ135_PIN = 35;
 constexpr uint8_t RAIN_PIN = 32;
-constexpr int LIMITE_CHUVA = 3000;  // abaixo disso = molhado (ajustar depois)
+constexpr int AMOSTRA_CHUVA_MOLHADO = 1911;
+constexpr int AMOSTRA_CHUVA_SECO = 4095;
+// Limiar inicial no ponto médio das amostras reais seco/molhado observadas.
+constexpr int LIMITE_CHUVA =
+    (AMOSTRA_CHUVA_MOLHADO + AMOSTRA_CHUVA_SECO) / 2;  // abaixo disso = molhado
 constexpr unsigned long INTERVALO_LEITURA_MS = 500;
 constexpr unsigned long TEMPO_LIMITE_WIFI_MS = 20000;
 constexpr unsigned long TEMPO_LIMITE_MQTT_MS = 10000;

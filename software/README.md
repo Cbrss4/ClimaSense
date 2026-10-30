@@ -57,6 +57,14 @@ sudo systemctl restart mosquitto
 
 Na raiz do repositório, ajuste `firmware/include/secrets.h` para o IPv4 da interface Wi-Fi do seu PC. Consulte-o com `ip -4 addr`; o ESP32 e o PC precisam estar na mesma rede. O assinante local conecta ao broker em `127.0.0.1`, enquanto o ESP32 conecta ao IPv4 do PC.
 
+O broker de demonstração permite MQTT anônimo e escuta em todas as interfaces IPv4. Restrinja a porta 1883 à sub-rede confiável no firewall. Com UFW ativo, confira a sub-rede com `ip -4 addr` e crie uma regra para o CIDR correto; por exemplo, para `192.168.1.0/24`:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 1883 proto tcp
+```
+
+O limiar inicial do sensor de chuva usa o ponto médio das amostras físicas observadas: 1911 no molhado e 4095 no seco. Recalibre se as leituras do seu sensor forem diferentes.
+
 Instale as dependências Python uma vez e inicie o fluxo completo:
 
 ```bash
@@ -65,7 +73,7 @@ uv sync
 ./scripts/testar-estacao.sh
 ```
 
-O script usa o Mosquitto já ativo ou inicia um broker local com `config/mosquitto-lan.conf`, e também inicia o assinante MQTT e a API. Pressione `Ctrl+C` para encerrar. Se o firewall estiver ativo, permita conexões TCP na porta 1883 pela rede local.
+O script confirma que o Mosquitto atende tanto em `127.0.0.1` quanto no IPv4 local do PC. Se o broker existente estiver limitado ao loopback, ele exibe o comando para reconfigurar o serviço. Caso não haja broker ativo, inicia um broker local com `config/mosquitto-lan.conf`. O script também inicia o assinante MQTT e a API. Pressione `Ctrl+C` para encerrar.
 
 ### Windows
 

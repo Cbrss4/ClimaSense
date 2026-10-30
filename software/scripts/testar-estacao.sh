@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 software_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-repo_dir="$(cd -- "$software_dir/.." && pwd)"
 session_dir="$(mktemp -d "${TMPDIR:-/tmp}/estacao-meteorologica.XXXXXX")"
 broker_pid=""
 subscriber_pid=""
@@ -18,9 +17,11 @@ cleanup() {
   wait 2>/dev/null || true
   rm -rf -- "$session_dir"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-for command in mosquitto; do
+for command in mosquitto ip curl; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf 'Comando ausente: %s. Instale-o antes de executar este script.\n' "$command" >&2
     exit 1
@@ -42,8 +43,26 @@ export MQTT_PORT=1883
 export MQTT_TOPIC=weather/station-01/readings
 export MQTT_QOS=1
 
+lan_ipv4() {
+  local address
+  while IFS= read -r address; do
+    [[ -n "$address" ]] || continue
+    if (echo >/dev/tcp/"$address"/1883) >/dev/null 2>&1; then
+      printf '%s\n' "$address"
+      return 0
+    fi
+  done < <(ip -4 -o addr show scope global | awk '{ split($4, address, "/"); print address[1] }')
+  return 1
+}
+
 if (echo >/dev/tcp/127.0.0.1/1883) >/dev/null 2>&1; then
-  printf 'Usando o Mosquitto já ativo em 127.0.0.1:1883.\n'
+  if broker_lan_ip="$(lan_ipv4)"; then
+    printf 'Usando o Mosquitto já ativo em 127.0.0.1:1883 e acessível pela LAN (%s).\n' "$broker_lan_ip"
+  else
+    printf 'O Mosquitto responde em 127.0.0.1, mas não pelo IPv4 da rede local.\n' >&2
+    printf 'Execute: sudo install -m 0644 "%s/config/mosquitto-lan.conf" /etc/mosquitto/conf.d/estacao.conf && sudo systemctl restart mosquitto\n' "$software_dir" >&2
+    exit 1
+  fi
 else
   mosquitto -c "$software_dir/config/mosquitto-lan.conf" -v >"$session_dir/broker.log" 2>&1 &
   broker_pid=$!
@@ -63,6 +82,12 @@ else
     printf 'O Mosquitto não abriu a porta 1883.\n' >&2
     exit 1
   fi
+  if ! broker_lan_ip="$(lan_ipv4)"; then
+    cat "$session_dir/broker.log" >&2
+    printf 'O Mosquitto não está acessível por um IPv4 da rede local.\n' >&2
+    exit 1
+  fi
+  printf 'Broker Mosquitto iniciado e acessível pela LAN (%s).\n' "$broker_lan_ip"
 fi
 
 cd "$software_dir"
