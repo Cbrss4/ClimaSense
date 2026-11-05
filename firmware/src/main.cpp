@@ -4,6 +4,7 @@
 #include <MQTT.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_BMP280.h>
 #include "secrets.h"
 
 constexpr uint8_t SDA_PIN = 21;
@@ -23,9 +24,30 @@ constexpr char MQTT_TOPIC[] = "weather/station-01/readings";
 constexpr char MQTT_CLIENT_ID[] = "station-01";
 
 Adafruit_BME280 bme;
+Adafruit_BMP280 bmp(&Wire);
 WiFiClient wifiClient;
 MQTTClient mqttClient(512);
 bool bmeDisponivel = false;
+bool bmpDisponivel = false;
+
+void diagnosticarI2C() {
+  Serial.println("Varredura I2C: procurando dispositivos...");
+  bool dispositivoEncontrado = false;
+  for (uint8_t endereco = 1; endereco < 127; ++endereco) {
+    Wire.beginTransmission(endereco);
+    if (Wire.endTransmission() == 0) {
+      Serial.print("Dispositivo I2C encontrado em 0x");
+      if (endereco < 16) {
+        Serial.print("0");
+      }
+      Serial.println(endereco, HEX);
+      dispositivoEncontrado = true;
+    }
+  }
+  if (!dispositivoEncontrado) {
+    Serial.println("Nenhum dispositivo respondeu no barramento I2C.");
+  }
+}
 
 bool conectarWifi() {
   if (WiFi.status() == WL_CONNECTED) {
@@ -112,8 +134,12 @@ String criarPayload(float temperatura, float umidade, float pressao,
 void imprimirMedida(const char* rotulo, float valor, const char* unidade,
                     float minimo, float maximo) {
   Serial.print(rotulo);
-  if (isnan(valor) || valor < minimo || valor > maximo) {
-    Serial.println("LEITURA INVÁLIDA");
+  if (isnan(valor)) {
+    Serial.println("INDISPONÍVEL");
+    return;
+  }
+  if (valor < minimo || valor > maximo) {
+    Serial.println("FORA DA FAIXA");
     return;
   }
 
@@ -129,15 +155,21 @@ void setup() {
 
   Wire.begin(SDA_PIN, SCL_PIN);
 
-  // O BME280 costuma usar o endereço 0x76 ou 0x77
+  // Tenta primeiro BME280 (temperatura, umidade e pressão).
   bmeDisponivel = bme.begin(0x76, &Wire);
   if (!bmeDisponivel) {
     bmeDisponivel = bme.begin(0x77, &Wire);
   }
-  if (!bmeDisponivel) {
-    Serial.println("Aviso: BME280 não encontrado (testei 0x76 e 0x77). Confira SDA/SCL/VIN/GND.");
-  } else {
+  if (bmeDisponivel) {
     Serial.println("BME280 encontrado!");
+  } else {
+    // BMP280 mede temperatura e pressão; não possui sensor de umidade.
+    bmpDisponivel = bmp.begin(0x76) || bmp.begin(0x77);
+    if (bmpDisponivel) {
+      Serial.println("BMP280 encontrado! Umidade não disponível neste modelo.");
+    } else {
+      Serial.println("Aviso: não encontrei BME280 nem BMP280 nos endereços 0x76/0x77. Confira SDA/SCL/VIN/GND.");
+    }
   }
 
   pinMode(LDR_PIN, INPUT);
@@ -153,6 +185,13 @@ void setup() {
 
 void loop() {
   const unsigned long inicioCiclo = millis();
+  static unsigned long ultimaVarreduraI2C = 0;
+
+  if (!bmeDisponivel && !bmpDisponivel &&
+      millis() - ultimaVarreduraI2C >= 5000) {
+    ultimaVarreduraI2C = millis();
+    diagnosticarI2C();
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     conectarWifi();
@@ -162,9 +201,17 @@ void loop() {
   }
   mqttClient.loop();
 
-  float temperatura = bmeDisponivel ? bme.readTemperature() : NAN;
-  float umidade = bmeDisponivel ? bme.readHumidity() : NAN;
-  float pressao = bmeDisponivel ? bme.readPressure() / 100.0F : NAN;
+  float temperatura = NAN;
+  float umidade = NAN;
+  float pressao = NAN;
+  if (bmeDisponivel) {
+    temperatura = bme.readTemperature();
+    umidade = bme.readHumidity();
+    pressao = bme.readPressure() / 100.0F;
+  } else if (bmpDisponivel) {
+    temperatura = bmp.readTemperature();
+    pressao = bmp.readPressure() / 100.0F;
+  }
 
   int luminosidade = analogRead(LDR_PIN);
   int qualidadeAr = analogRead(MQ135_PIN);
