@@ -152,3 +152,10 @@ Os testes usam bancos temporários e não alteram `data/station.db`.
 - [Evidências da S2](docs/evidencias-s2.md)
 
 `gas_raw` é um valor bruto, não ppm. `light_raw` também é bruto e não representa lux. O estado de chuva não representa milímetros.
+
+
+## Dashboard Estação Viva
+
+Interface integrada com modos claro e escuro. Consulte o [guia de execução e integração](../INTEGRACAO-DASHBOARD.md).
+
+Para instruções passo a passo de acesso local, configuração do ESP32 e solução de problemas, consulte o [Manual de acesso ao dashboard](../MANUAL-DASHBOARD.md).

@@ -1,5 +1,5 @@
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from app.database import connect_database, initialize_database
@@ -136,3 +136,30 @@ class ReadingRepository:
             return None
 
         return ReadingRecord.model_validate(dict(row))
+
+
+    def dashboard_history(self) -> list[ReadingRecord]:
+        """Amostragem temporal; não limita 12 horas às últimas 500 mensagens MQTT."""
+        now = datetime.now(timezone.utc)
+        cutoff = to_utc_iso(now - timedelta(hours=12))
+        with closing(connect_database(self.database_path)) as connection:
+            rows = connection.execute(
+                """
+                WITH ranked AS (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY device_id,
+                            CAST(strftime('%s', received_at) AS INTEGER) / 300
+                        ORDER BY received_at DESC, id DESC
+                    ) AS position
+                    FROM readings
+                    WHERE status IN ('valid', 'partial')
+                      AND received_at >= ? AND received_at <= ?
+                )
+                SELECT readings.* FROM readings
+                JOIN ranked ON readings.id = ranked.id
+                WHERE ranked.position = 1
+                ORDER BY received_at ASC, readings.id ASC
+                """,
+                (cutoff, to_utc_iso(now)),
+            ).fetchall()
+        return [ReadingRecord.model_validate(dict(row)) for row in rows]

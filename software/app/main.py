@@ -1,7 +1,11 @@
 from functools import lru_cache
+from pathlib import Path as FilePath
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, status
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.models import ReadingRecord
 from app.repository import (
@@ -62,3 +66,18 @@ def reading_by_id(
             detail="Leitura não encontrada",
         )
     return reading
+
+
+@app.get("/api/v1/dashboard/history", response_model=list[ReadingRecord])
+def dashboard_history(repository: RepositoryDependency) -> list[ReadingRecord]:
+    """Últimas 12 horas, uma leitura por janela de cinco minutos e dispositivo."""
+    return repository.dashboard_history()
+
+
+FRONTEND = FilePath(__file__).resolve().parent.parent / "frontend"
+app.mount("/assets", StaticFiles(directory=FRONTEND), name="frontend-assets")
+
+
+@app.get("/", include_in_schema=False)
+def dashboard() -> FileResponse:
+    return FileResponse(FRONTEND / "index.html")

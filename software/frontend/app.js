@@ -1,0 +1,54 @@
+'use strict';
+// Altere somente estes endpoints para integrar o back-end. Não há acesso a sensores no navegador.
+const CONFIG = { atual: '/api/v1/readings/latest', historico: '/api/v1/dashboard/history', intervaloMs: 10000, timeoutMs: 8000, limites: { temperatura: 32, umidadeMinima: 30 } };
+const DEMO = Object.freeze({temperatura:24.8,umidade:68,qualidadeAr:812,condicao:'Sensor de chuva seco',atualizadoEm:'2026-11-03T14:30:00-03:00',status:'demo'});
+const demoHistory = [21.2,21,21.5,22.1,22,22.7,23.6,23.4,24.3,24.1,25.2,24.8].map((v,i)=>({atualizadoEm:`2026-11-03T${String(i+3).padStart(2,'0')}:30:00-03:00`,temperatura:v,umidade:[77,78,76,74,75,73,71,72,70,71,67,68][i]}));
+const $=id=>document.getElementById(id); let series='temperatura', history=[], isDemo=true, busy=false, chartMessage='';
+const format=n=>typeof n==='number'&&Number.isFinite(n)?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(n):'—';
+const date=d=>new Date(d).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+async function getJSON(url){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),CONFIG.timeoutMs);try{const response=await fetch(url,{signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'}});if(!response.ok){const error=new Error('API indisponível');error.status=response.status;throw error;}return await response.json();}finally{clearTimeout(timer)}}
+function validate(d){if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('Resposta inválida');for(const key of ['temperatura','umidade','qualidadeAr'])if(d[key]!=null&&(typeof d[key]!=='number'||!Number.isFinite(d[key])))throw new Error('Leitura inválida');if(d.umidade!=null&&(d.umidade<0||d.umidade>100))throw new Error('Umidade inválida');if(!['online','offline','demo'].includes(d.status))throw new Error('Status inválido');if(!Number.isFinite(Date.parse(d.atualizadoEm)))throw new Error('Data inválida');return d;}
+function StationStatus(d,demo){$('status').className='status '+(demo?'demo':d.status==='online'?'online':'offline');$('status').textContent=demo?'◌ Dados de demonstração':d.status==='online'?'● Online':'○ Sem conexão';$('updated').textContent=(demo?'Exemplo de leitura: ':'Última leitura: ')+date(d.atualizadoEm);}
+function MetricCards(d){for(const k of ['temperatura','umidade','qualidadeAr'])$(k).textContent=format(d[k]);document.querySelector('.weather-card .tag').textContent=isDemo?'Exemplo ilustrativo':'Leitura local';const air=d.ar||{};$('air-unit').textContent=air.unidade||'ADC bruto';$('air-tag').textContent=air.classificacao||'Sem calibração';$('air-note').textContent=air.descricao||'MQ-135: sinal bruto, sem conversão para ppm ou IQA.';$('condicao').textContent=d.condicao||'Condição não informada';$('condition-source').textContent=isDemo?'Exemplo ilustrativo · não é previsão':d.fonteCondicao||'Origem não informada pela API';const c=(d.condicao||'').toLowerCase();$('weather-icon').textContent=c.includes('molhado')?'🌧':c.includes('nubl')?'⛅':c.includes('sol')?'☀':'☁';}
+function Alerts(d){const messages=[];if(d.temperatura>CONFIG.limites.temperatura)messages.push(['Temperatura acima do limite configurado',`A leitura ultrapassou ${CONFIG.limites.temperatura} °C. Procure locais frescos e mantenha-se hidratado.`]);if(d.umidade<CONFIG.limites.umidadeMinima&&d.umidade!=null)messages.push(['Umidade abaixo do limite configurado',`A umidade está abaixo de ${CONFIG.limites.umidadeMinima}%. Acompanhe as orientações locais.`]);if(d.ar?.alerta===true)messages.push(['Leitura de qualidade do ar elevada','O limite configurado para o sensor foi ultrapassado. Verifique a calibração e acompanhe os avisos locais.']);$('alert-count').textContent=messages.length;$('alert-list').replaceChildren();if(!messages.length)messages.push(['Sem alertas de temperatura ou umidade','Limites: temperatura acima de 32 °C ou umidade abaixo de 30%. Campos sem leitura não são avaliados; o sinal MQ-135 não recebe classificação.']);for(const [title,description] of messages){const item=document.createElement('div');item.className='alert-item'+(title.startsWith('Sem alertas')?'':' warning');const icon=document.createElement('span');icon.className='alert-icon';icon.textContent=title.startsWith('Sem alertas')?'✓':'!';icon.setAttribute('aria-hidden','true');const content=document.createElement('div');const h=document.createElement('strong');h.textContent=title;const p=document.createElement('p');p.textContent=description;const s=document.createElement('small');s.textContent=isDemo?'CENÁRIO DE DEMONSTRAÇÃO':'BASEADO NA ÚLTIMA LEITURA';content.append(h,p,s);item.append(icon,content);$('alert-list').append(item);}}
+function HistoryChart(){const data=history;const available=data.filter(d=>Number.isFinite(d[series]));$('history-source').textContent=chartMessage|| (isDemo?'Histórico ilustrativo · 03/11/2026':'Leituras recebidas da API · últimas 12 horas');$('legend').textContent=series==='temperatura'?'Temperatura do ar (°C)':'Umidade relativa (%)';if(!available.length){$('chart').textContent='Ainda não há histórico disponível para esta série.';return;}const unit=series==='temperatura'?'°C':'%';let min=Math.floor(Math.min(...available.map(d=>d[series]))/5)*5-5,max=Math.ceil(Math.max(...available.map(d=>d[series]))/5)*5+5;const first=Date.parse(data[0].atualizadoEm),last=Date.parse(data[data.length-1].atualizadoEm);const x=i=>42+(Date.parse(data[i].atualizadoEm)-first)*620/Math.max(1,last-first),y=v=>155-(v-min)/(max-min)*135;const points=data.map((d,i)=>Number.isFinite(d[series])?`${x(i)},${y(d[series])}`:null);let svg=`<svg viewBox="0 0 690 195" role="group" aria-label="Histórico de ${series}; ${isDemo?'dados de demonstração':'leituras da API'}. Pontos acessíveis pelo teclado."><defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#dce8ce" stop-opacity=".6"/><stop offset="1" stop-color="#f9fcf5" stop-opacity=".15"/></linearGradient></defs>`;for(let j=0;j<4;j++){const v=min+(max-min)*j/3;svg+=`<line x1="42" x2="662" y1="${y(v)}" y2="${y(v)}" stroke="#edf0e7" stroke-dasharray="3 5"/><text x="0" y="${y(v)+4}">${Math.round(v)}${unit}</text>`;}let segments=[];let segment=[];for(const point of points){if(point)segment.push(point);else if(segment.length){segments.push(segment);segment=[];}}if(segment.length)segments.push(segment);for(const path of segments)svg+=`<polyline points="${path.join(' ')}" fill="none" stroke="#85a366" stroke-width="2.5" stroke-linejoin="round"/>`;data.forEach((d,i)=>{if(!Number.isFinite(d[series]))return;const time=new Date(d.atualizadoEm).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});svg+=`<circle class="point" tabindex="0" role="img" aria-label="${time}: ${format(d[series])} ${unit}" cx="${x(i)}" cy="${y(d[series])}" r="4"><title>${time}: ${format(d[series])} ${unit}</title></circle>`;if(i%Math.max(1,Math.ceil(data.length/6))===0||i===data.length-1)svg+=`<text x="${x(i)}" y="181" text-anchor="middle">${time}</text>`;});$('chart').innerHTML=svg+'</svg>';}
+// Adaptação do contrato MQTT/FastAPI sem alterar firmware ou APIs existentes.
+function adaptReading(r){
+  if(!r || !['valid','partial'].includes(r.status) || typeof r.device_id!=='string' || !Number.isFinite(Date.parse(r.received_at))) throw new Error('Contrato inválido');
+  for(const key of ['temperature_c','humidity_pct','gas_raw','pressure_hpa','light_raw']) if(r[key]!=null && !Number.isFinite(r[key])) throw new Error('Leitura inválida');
+  const age=Date.now()-Date.parse(r.received_at);
+  return {temperatura:r.temperature_c,umidade:r.humidity_pct,qualidadeAr:r.gas_raw,
+    condicao:r.rain_detected===true?'Sensor de chuva molhado':r.rain_detected===false?'Sensor de chuva seco':'Chuva: sem leitura',
+    fonteCondicao:'Detecção local pelo sensor de chuva · não é previsão',
+    atualizadoEm:r.received_at,status:age>=-60000 && age<=120000?'online':'offline',raw:r};
+}
+function renderExtra(r){
+  $('pressao').textContent=format(r?.pressure_hpa)+' hPa';
+  $('luz').textContent=format(r?.light_raw)+' ADC';
+  $('chuva').textContent=r?.rain_detected===true?'Molhado':r?.rain_detected===false?'Seco':'Sem leitura';
+}
+async function update(){
+ if(busy)return;busy=true;$('refresh').disabled=true;
+ try{
+  const d=validate(adaptReading(await getJSON(CONFIG.atual)));isDemo=false;
+  StationStatus(d,false);$('status').textContent=d.status==='online'?'● Dados recentes':'○ Sem leitura recente';
+  $('updated').textContent='Recebido no servidor: '+date(d.atualizadoEm);
+  MetricCards(d);Alerts(d);renderExtra(d.raw);
+  $('notice').className='notice'+(d.status==='online'?' live':'');
+  $('notice').textContent=(d.status==='online'?'Leitura recebida pela API. ':'Sem leitura recebida nos últimos 2 minutos. Exibindo a última disponível. ')+
+    'Dispositivo: '+d.raw.device_id+'. Origem física ou simulada conforme o produtor MQTT. '+
+    (d.raw.captured_at?'Horário informado pelo dispositivo: '+date(d.raw.captured_at)+'. ':'Dispositivo sem horário de captura; usamos o recebimento no servidor. ')+
+    (d.raw.status==='partial'?'Leitura parcial: campos ausentes aparecem como —. ':'')+'Consulta automática a cada 10 segundos.';
+  try{
+    const raw=await getJSON(CONFIG.historico);if(!Array.isArray(raw))throw new Error('Histórico inválido');
+    history=raw.filter(r=>r.device_id===d.raw.device_id).map(adaptReading).map(r=>({atualizadoEm:r.atualizadoEm,temperatura:r.temperatura,umidade:r.umidade}));
+    chartMessage='Histórico da API · 12 horas · uma leitura por janela de 5 min';
+  }catch{history=[];chartMessage='Histórico indisponível · leitura atual preservada';}
+ }catch(error){
+  isDemo=true;history=demoHistory;chartMessage='Histórico ilustrativo · 03/11/2026';StationStatus(DEMO,true);MetricCards(DEMO);Alerts(DEMO);
+  renderExtra({pressure_hpa:1012.8,light_raw:2200,rain_detected:false});
+  $('notice').className='notice';$('notice').textContent=(error.status===404?'Ainda não há leituras no banco. ':'API indisponível ou resposta inválida. ')+
+  'Exibindo exemplos fixos de demonstração, sem conexão comprovada com sensores. Nova tentativa em 10 segundos.';
+ }finally{HistoryChart();busy=false;$('refresh').disabled=false;}
+}
+$('refresh').addEventListener('click',update);document.querySelectorAll('[data-series]').forEach(b=>b.addEventListener('click',()=>{series=b.dataset.series;document.querySelectorAll('[data-series]').forEach(t=>{t.classList.toggle('selected',t===b);t.setAttribute('aria-pressed',String(t===b));});HistoryChart();}));$('details').addEventListener('click',()=>{const expanded=$('details').getAttribute('aria-expanded')==='true';$('details').setAttribute('aria-expanded',String(!expanded));$('technical').hidden=expanded;});update();setInterval(update,CONFIG.intervaloMs);

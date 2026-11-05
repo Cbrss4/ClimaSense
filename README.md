@@ -43,6 +43,8 @@ uv run pytest -q
 
 As instruções de configuração, execução do broker, assinante MQTT, API e teste integrado estão em [`software/README.md`](software/README.md).
 
+Para iniciar o painel local, consulte o [Manual de acesso ao dashboard](MANUAL-DASHBOARD.md).
+
 ## Firmware físico
 
 O firmware utiliza um arquivo local para a configuração da rede e do broker. Crie-o a partir do exemplo e não o adicione ao Git:
@@ -96,3 +98,8 @@ pio run
 ```
 
 Uma alteração só deve ser integrada depois que os caminhos documentados e as três verificações continuarem funcionando.
+
+
+## Dashboard Estação Viva
+
+Interface integrada com modos claro e escuro. Consulte o [guia de execução e integração](INTEGRACAO-DASHBOARD.md).
