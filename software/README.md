@@ -118,7 +118,7 @@ uv run uvicorn app.main:app --reload
 Com o assinante e a API em execução, abra um terceiro PowerShell e publique uma leitura:
 
 ```powershell
-$payload = '{"schema_version":2,"device_id":"station-01","captured_at":null,"temperature_c":26.1,"humidity_pct":58.4,"pressure_hpa":1011.7,"gas_raw":812,"light_raw":4095,"light_detected":null,"rain_detected":false}'
+$payload = '{"schema_version":3,"device_id":"station-01","captured_at":null,"temperature_c":26.1,"temperature_source":"sensor","humidity_pct":58.4,"humidity_source":"sensor","pressure_hpa":1011.7,"pressure_source":"sensor","gas_raw":812,"light_raw":4095,"light_detected":null,"rain_detected":false}'
 $payload | & 'C:\Program Files\mosquitto\mosquitto_pub.exe' -h 127.0.0.1 -p 1883 -t 'weather/station-01/readings' -q 1 -s
 ```
 

@@ -42,6 +42,7 @@ export MQTT_HOST=127.0.0.1
 export MQTT_PORT=1883
 export MQTT_TOPIC=weather/station-01/readings
 export MQTT_QOS=1
+api_bind_host="${API_BIND_HOST:-127.0.0.1}"
 
 lan_ipv4() {
   local address
@@ -93,7 +94,7 @@ fi
 cd "$software_dir"
 "$software_dir/.venv/bin/python" -m app.mqtt_subscriber >"$session_dir/subscriber.log" 2>&1 &
 subscriber_pid=$!
-"$software_dir/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port 8000 >"$session_dir/api.log" 2>&1 &
+"$software_dir/.venv/bin/uvicorn" app.main:app --host "$api_bind_host" --port 8000 >"$session_dir/api.log" 2>&1 &
 api_pid=$!
 
 ready=false

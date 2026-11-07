@@ -46,15 +46,18 @@ class ReadingRepository:
                     captured_at,
                     received_at,
                     temperature_c,
+                    temperature_source,
                     humidity_pct,
+                    humidity_source,
                     pressure_hpa,
+                    pressure_source,
                     gas_raw,
                     light_raw,
                     light_detected,
                     rain_detected,
                     status,
                     validation_error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reading.schema_version,
@@ -62,8 +65,11 @@ class ReadingRepository:
                     captured_at_text,
                     received_at_text,
                     reading.temperature_c,
+                    reading.temperature_source,
                     reading.humidity_pct,
+                    reading.humidity_source,
                     reading.pressure_hpa,
+                    reading.pressure_source,
                     reading.gas_raw,
                     getattr(reading, "light_raw", None),
                     reading.light_detected,
