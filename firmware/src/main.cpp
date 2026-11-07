@@ -5,6 +5,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_BMP280.h>
+#include <math.h>
+#include <string.h>
 #include "secrets.h"
 
 constexpr uint8_t SDA_PIN = 21;
@@ -18,6 +20,7 @@ constexpr int AMOSTRA_CHUVA_SECO = 4095;
 constexpr int LIMITE_CHUVA =
     (AMOSTRA_CHUVA_MOLHADO + AMOSTRA_CHUVA_SECO) / 2;  // abaixo disso = molhado
 constexpr unsigned long INTERVALO_LEITURA_MS = 500;
+constexpr unsigned long PERIODO_SIMULACAO_MS = 600000;
 constexpr unsigned long TEMPO_LIMITE_WIFI_MS = 20000;
 constexpr unsigned long TEMPO_LIMITE_MQTT_MS = 10000;
 constexpr char MQTT_TOPIC[] = "weather/station-01/readings";
@@ -107,19 +110,32 @@ void adicionarNumeroOuNull(String& payload, float valor, float minimo,
   payload += String(valor, 2);
 }
 
+String origemJson(const char* origem) {
+  return String("\"") + origem + "\"";
+}
+
 String criarPayload(float temperatura, float umidade, float pressao,
+                    const char* origemTemperatura,
+                    const char* origemUmidade,
+                    const char* origemPressao,
                     int qualidadeAr, int luminosidade, bool chuvaDetectada) {
   String payload;
-  payload.reserve(256);
-  payload += "{\"schema_version\":2";
+  payload.reserve(384);
+  payload += "{\"schema_version\":3";
   payload += ",\"device_id\":\"station-01\"";
   payload += ",\"captured_at\":null";
   payload += ",\"temperature_c\":";
   adicionarNumeroOuNull(payload, temperatura, -40.0F, 80.0F);
+  payload += ",\"temperature_source\":";
+  payload += origemJson(origemTemperatura);
   payload += ",\"humidity_pct\":";
   adicionarNumeroOuNull(payload, umidade, 0.0F, 100.0F);
+  payload += ",\"humidity_source\":";
+  payload += origemJson(origemUmidade);
   payload += ",\"pressure_hpa\":";
   adicionarNumeroOuNull(payload, pressao, 300.0F, 1100.0F);
+  payload += ",\"pressure_source\":";
+  payload += origemJson(origemPressao);
   payload += ",\"gas_raw\":";
   payload += String(qualidadeAr);
   payload += ",\"light_raw\":";
@@ -132,7 +148,7 @@ String criarPayload(float temperatura, float umidade, float pressao,
 }
 
 void imprimirMedida(const char* rotulo, float valor, const char* unidade,
-                    float minimo, float maximo) {
+                    float minimo, float maximo, const char* origem) {
   Serial.print(rotulo);
   if (isnan(valor)) {
     Serial.println("INDISPONÍVEL");
@@ -145,7 +161,21 @@ void imprimirMedida(const char* rotulo, float valor, const char* unidade,
 
   Serial.print(valor, 2);
   Serial.print(" ");
-  Serial.println(unidade);
+  Serial.print(unidade);
+  if (strcmp(origem, "simulated") == 0) {
+    Serial.print(" [SIMULADA]");
+  } else {
+    Serial.print(" [SENSOR]");
+  }
+  Serial.println();
+}
+
+float valorSimulado(float base, float amplitude, unsigned long agora,
+                    unsigned long deslocamento) {
+  const float fase = static_cast<float>((agora + deslocamento) %
+                                        PERIODO_SIMULACAO_MS) /
+                     static_cast<float>(PERIODO_SIMULACAO_MS);
+  return base + amplitude * sinf(fase * 6.2831853F);
 }
 
 void setup() {
@@ -204,13 +234,36 @@ void loop() {
   float temperatura = NAN;
   float umidade = NAN;
   float pressao = NAN;
+  const char* origemTemperatura = "unavailable";
+  const char* origemUmidade = "unavailable";
+  const char* origemPressao = "unavailable";
   if (bmeDisponivel) {
     temperatura = bme.readTemperature();
     umidade = bme.readHumidity();
     pressao = bme.readPressure() / 100.0F;
+    origemTemperatura = "sensor";
+    origemUmidade = "sensor";
+    origemPressao = "sensor";
   } else if (bmpDisponivel) {
     temperatura = bmp.readTemperature();
     pressao = bmp.readPressure() / 100.0F;
+    origemTemperatura = "sensor";
+    origemPressao = "sensor";
+  }
+
+  // Valores de demonstração preenchem somente campos sem leitura física.
+  const unsigned long tempoSimulacao = millis();
+  if (!isfinite(temperatura) || temperatura < -40.0F || temperatura > 80.0F) {
+    temperatura = valorSimulado(24.0F, 2.5F, tempoSimulacao, 0);
+    origemTemperatura = "simulated";
+  }
+  if (!isfinite(umidade) || umidade < 0.0F || umidade > 100.0F) {
+    umidade = valorSimulado(62.0F, 8.0F, tempoSimulacao, 170000);
+    origemUmidade = "simulated";
+  }
+  if (!isfinite(pressao) || pressao < 300.0F || pressao > 1100.0F) {
+    pressao = valorSimulado(1013.0F, 4.0F, tempoSimulacao, 330000);
+    origemPressao = "simulated";
   }
 
   int luminosidade = analogRead(LDR_PIN);
@@ -219,9 +272,12 @@ void loop() {
   bool chuvaDetectada = chuvaBruta < LIMITE_CHUVA;
 
   Serial.println("---- Leitura da Estação ----");
-  imprimirMedida("Temperatura: ", temperatura, "°C", -40.0F, 80.0F);
-  imprimirMedida("Umidade: ", umidade, "%", 0.0F, 100.0F);
-  imprimirMedida("Pressão: ", pressao, "hPa", 300.0F, 1100.0F);
+  imprimirMedida("Temperatura: ", temperatura, "°C", -40.0F, 80.0F,
+                 origemTemperatura);
+  imprimirMedida("Umidade: ", umidade, "%", 0.0F, 100.0F,
+                 origemUmidade);
+  imprimirMedida("Pressão: ", pressao, "hPa", 300.0F, 1100.0F,
+                 origemPressao);
   Serial.print("Luminosidade (LDR, leitura bruta): ");
   Serial.println(luminosidade);
   Serial.print("Qualidade do ar (MQ-135, leitura bruta): ");
@@ -233,7 +289,8 @@ void loop() {
   Serial.println("-----------------------------");
 
   const String payload = criarPayload(
-      temperatura, umidade, pressao, qualidadeAr, luminosidade,
+      temperatura, umidade, pressao, origemTemperatura, origemUmidade,
+      origemPressao, qualidadeAr, luminosidade,
       chuvaDetectada);
   if (mqttClient.connected()) {
     const bool publicado = mqttClient.publish(
