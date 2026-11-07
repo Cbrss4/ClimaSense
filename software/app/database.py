@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-DATABASE_VERSION = 2
+DATABASE_VERSION = 3
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "station.db"
 
 SCHEMA_SQL = """
@@ -14,10 +14,13 @@ CREATE TABLE IF NOT EXISTS readings (
     captured_at TEXT,
     received_at TEXT NOT NULL,
     temperature_c REAL,
+    temperature_source TEXT NOT NULL DEFAULT 'sensor',
     humidity_pct REAL CHECK (
         humidity_pct IS NULL OR humidity_pct BETWEEN 0 AND 100
     ),
+    humidity_source TEXT NOT NULL DEFAULT 'sensor',
     pressure_hpa REAL,
+    pressure_source TEXT NOT NULL DEFAULT 'sensor',
     gas_raw INTEGER,
     light_raw INTEGER CHECK (
         light_raw IS NULL OR light_raw BETWEEN 0 AND 4095
@@ -76,6 +79,21 @@ def initialize_database(database_path: str | Path | None = None) -> Path:
                     light_raw IS NULL OR light_raw BETWEEN 0 AND 4095
                 )
                 """
+            )
+        for field in ("temperature", "humidity", "pressure"):
+            column = f"{field}_source"
+            if column not in columns:
+                connection.execute(
+                    f"ALTER TABLE readings ADD COLUMN {column} TEXT NOT NULL DEFAULT 'sensor'"
+                )
+            value_column = {
+                "temperature": "temperature_c",
+                "humidity": "humidity_pct",
+                "pressure": "pressure_hpa",
+            }[field]
+            connection.execute(
+                f"UPDATE readings SET {column} = 'unavailable' "
+                f"WHERE {value_column} IS NULL"
             )
         connection.execute(f"PRAGMA user_version = {DATABASE_VERSION}")
         connection.commit()

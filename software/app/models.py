@@ -8,9 +8,11 @@ from pydantic import (
     StringConstraints,
     TypeAdapter,
     field_validator,
+    model_validator,
 )
 
 DeviceId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+ClimateSource = Literal["sensor", "simulated", "unavailable"]
 
 
 class ReadingPayloadBase(BaseModel):
@@ -21,8 +23,11 @@ class ReadingPayloadBase(BaseModel):
     device_id: DeviceId
     captured_at: datetime | None
     temperature_c: float | None
+    temperature_source: ClimateSource | None = None
     humidity_pct: float | None = Field(ge=0, le=100)
+    humidity_source: ClimateSource | None = None
     pressure_hpa: float | None
+    pressure_source: ClimateSource | None = None
     gas_raw: int | None
     light_detected: bool | None
     rain_detected: bool | None
@@ -44,6 +49,24 @@ class ReadingPayloadBase(BaseModel):
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("captured_at deve informar UTC ou um fuso horário")
         return value
+
+    @model_validator(mode="after")
+    def infer_and_validate_climate_sources(self):
+        for field in ("temperature", "humidity", "pressure"):
+            value_field = {
+                "temperature": "temperature_c",
+                "humidity": "humidity_pct",
+                "pressure": "pressure_hpa",
+            }[field]
+            value = getattr(self, value_field)
+            source_field = f"{field}_source"
+            source = getattr(self, source_field)
+            if source is None:
+                source = "sensor" if value is not None else "unavailable"
+                setattr(self, source_field, source)
+            if (value is None) != (source == "unavailable"):
+                raise ValueError(f"{source_field} incompatível com {value_field}")
+        return self
 
     @property
     def is_partial(self) -> bool:
@@ -78,8 +101,15 @@ class ReadingPayloadV2(ReadingPayloadBase):
     )
 
 
+class ReadingPayloadV3(ReadingPayloadBase):
+    """Contrato atual com origem explícita para medidas climáticas."""
+
+    schema_version: Literal[3]
+    light_raw: int | None = Field(ge=0, le=4095)
+
+
 ReadingPayload = Annotated[
-    ReadingPayloadV1 | ReadingPayloadV2,
+    ReadingPayloadV1 | ReadingPayloadV2 | ReadingPayloadV3,
     Field(discriminator="schema_version"),
 ]
 READING_PAYLOAD_ADAPTER = TypeAdapter(ReadingPayload)
@@ -98,6 +128,9 @@ class ReadingRecord(BaseModel):
     temperature_c: float | None
     humidity_pct: float | None
     pressure_hpa: float | None
+    temperature_source: ClimateSource = "unavailable"
+    humidity_source: ClimateSource = "unavailable"
+    pressure_source: ClimateSource = "unavailable"
     gas_raw: int | None
     light_raw: int | None
     light_detected: bool | None

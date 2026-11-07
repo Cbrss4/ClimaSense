@@ -70,7 +70,7 @@ def test_null_sensor_value_makes_payload_partial(sensor_field: str) -> None:
 @pytest.mark.parametrize(
     ("field", "invalid_value"),
     [
-        ("schema_version", 3),
+        ("schema_version", 4),
         ("device_id", "   "),
         ("captured_at", "2026-09-30T18:30:00"),
         ("temperature_c", "25.4"),
