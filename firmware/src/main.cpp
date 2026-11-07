@@ -151,7 +151,7 @@ void imprimirMedida(const char* rotulo, float valor, const char* unidade,
 void setup() {
   Serial.begin(115200);
   delay(3000);
-  Serial.println("Iniciando Estação Meteorológica...");
+  Serial.println("Iniciando ClimaSense...");
 
   Wire.begin(SDA_PIN, SCL_PIN);
 

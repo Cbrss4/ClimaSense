@@ -1,4 +1,4 @@
-# Estação Viva integrada ao projeto
+# Dashboard ClimaSense integrado ao projeto
 
 ## Executar
 Na pasta `software`:

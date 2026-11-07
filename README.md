@@ -1,4 +1,4 @@
-# Estação Meteorológica Inteligente
+# ClimaSense — Estação Meteorológica Inteligente
 
 Protótipo acadêmico de uma estação meteorológica com ESP32. O repositório reúne, em projetos independentes, o software de integração, o firmware dos sensores físicos e a simulação Wokwi.
 
@@ -100,6 +100,6 @@ pio run
 Uma alteração só deve ser integrada depois que os caminhos documentados e as três verificações continuarem funcionando.
 
 
-## Dashboard Estação Viva
+## Dashboard ClimaSense
 
 Interface integrada com modos claro e escuro. Consulte o [guia de execução e integração](INTEGRACAO-DASHBOARD.md).

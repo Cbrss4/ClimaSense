@@ -14,7 +14,7 @@ from app.repository import (
     ReadingRepository,
 )
 
-app = FastAPI(title="Estação Meteorológica", version="0.1.0")
+app = FastAPI(title="ClimaSense", version="0.1.0")
 
 
 @lru_cache

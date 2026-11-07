@@ -30,7 +30,7 @@ void imprimirMedida(const char* rotulo, float valor, const char* unidade,
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("Iniciando Estação Meteorológica...");
+  Serial.println("Iniciando ClimaSense...");
 
   Wire.begin();
   dht.setup(DHT_PIN, DHTesp::DHT22);

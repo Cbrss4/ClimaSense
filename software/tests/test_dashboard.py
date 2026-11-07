@@ -12,7 +12,7 @@ def test_dashboard_and_assets_are_served():
     with TestClient(app) as client:
         page = client.get('/')
         assert page.status_code == 200
-        assert 'Estação Viva' in page.text
+        assert 'ClimaSense' in page.text
         assert 'theme-select' in page.text
         for asset in ['style.css', 'app.js', 'theme.js']:
             assert client.get('/assets/' + asset).status_code == 200

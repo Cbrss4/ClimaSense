@@ -1,4 +1,4 @@
-# Estação meteorológica — software
+# ClimaSense — software da estação meteorológica
 
 Este repositório contém o backend da estação meteorológica. Ele recebe leituras por MQTT, valida o JSON, salva os dados em SQLite e permite consultá-los por uma API FastAPI.
 
@@ -154,7 +154,7 @@ Os testes usam bancos temporários e não alteram `data/station.db`.
 `gas_raw` é um valor bruto, não ppm. `light_raw` também é bruto e não representa lux. O estado de chuva não representa milímetros.
 
 
-## Dashboard Estação Viva
+## Dashboard ClimaSense
 
 Interface integrada com modos claro e escuro. Consulte o [guia de execução e integração](../INTEGRACAO-DASHBOARD.md).
 
