@@ -11,14 +11,11 @@
 
 constexpr uint8_t SDA_PIN = 21;
 constexpr uint8_t SCL_PIN = 22;
-constexpr uint8_t LDR_PIN = 34;
+constexpr uint8_t LDR_PIN = 27;
 constexpr uint8_t MQ135_PIN = 35;
 constexpr uint8_t RAIN_PIN = 32;
-constexpr int AMOSTRA_CHUVA_MOLHADO = 1911;
-constexpr int AMOSTRA_CHUVA_SECO = 4095;
-// Limiar inicial no ponto médio das amostras reais seco/molhado observadas.
-constexpr int LIMITE_CHUVA =
-    (AMOSTRA_CHUVA_MOLHADO + AMOSTRA_CHUVA_SECO) / 2;  // abaixo disso = molhado
+// Leituras observadas: 62–89 com gotas e 198–227 com a placa seca.
+constexpr int LIMITE_CHUVA = 140;  // abaixo disso = molhado
 constexpr unsigned long INTERVALO_LEITURA_MS = 500;
 constexpr unsigned long PERIODO_SIMULACAO_MS = 600000;
 constexpr unsigned long TEMPO_LIMITE_WIFI_MS = 20000;
@@ -118,7 +115,7 @@ String criarPayload(float temperatura, float umidade, float pressao,
                     const char* origemTemperatura,
                     const char* origemUmidade,
                     const char* origemPressao,
-                    int qualidadeAr, int luminosidade, bool chuvaDetectada) {
+                    int qualidadeAr, bool luzDetectada, bool chuvaDetectada) {
   String payload;
   payload.reserve(384);
   payload += "{\"schema_version\":3";
@@ -138,9 +135,9 @@ String criarPayload(float temperatura, float umidade, float pressao,
   payload += origemJson(origemPressao);
   payload += ",\"gas_raw\":";
   payload += String(qualidadeAr);
-  payload += ",\"light_raw\":";
-  payload += String(luminosidade);
-  payload += ",\"light_detected\":null";
+  payload += ",\"light_raw\":null";
+  payload += ",\"light_detected\":";
+  payload += luzDetectada ? "true" : "false";
   payload += ",\"rain_detected\":";
   payload += chuvaDetectada ? "true" : "false";
   payload += "}";
@@ -266,7 +263,7 @@ void loop() {
     origemPressao = "simulated";
   }
 
-  int luminosidade = analogRead(LDR_PIN);
+  const bool luzDetectada = digitalRead(LDR_PIN) == LOW;
   int qualidadeAr = analogRead(MQ135_PIN);
   int chuvaBruta = analogRead(RAIN_PIN);
   bool chuvaDetectada = chuvaBruta < LIMITE_CHUVA;
@@ -278,8 +275,8 @@ void loop() {
                  origemUmidade);
   imprimirMedida("Pressão: ", pressao, "hPa", 300.0F, 1100.0F,
                  origemPressao);
-  Serial.print("Luminosidade (LDR, leitura bruta): ");
-  Serial.println(luminosidade);
+  Serial.print("Luminosidade (LDR, GPIO 27): ");
+  Serial.println(luzDetectada ? "CLARO (0)" : "ESCURO (1)");
   Serial.print("Qualidade do ar (MQ-135, leitura bruta): ");
   Serial.println(qualidadeAr);
   Serial.print("Chuva (leitura bruta): ");
@@ -290,7 +287,7 @@ void loop() {
 
   const String payload = criarPayload(
       temperatura, umidade, pressao, origemTemperatura, origemUmidade,
-      origemPressao, qualidadeAr, luminosidade,
+      origemPressao, qualidadeAr, luzDetectada,
       chuvaDetectada);
   if (mqttClient.connected()) {
     const bool publicado = mqttClient.publish(

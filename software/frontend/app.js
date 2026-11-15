@@ -1,6 +1,7 @@
 'use strict';
 // Altere somente estes endpoints para integrar o back-end. Não há acesso a sensores no navegador.
-const CONFIG = { atual: '/api/v1/readings/latest', historico: '/api/v1/dashboard/history', intervaloMs: 10000, timeoutMs: 8000, limites: { temperatura: 32, umidadeMinima: 30 } };
+const CONFIG = { atual: '/api/v1/readings/latest', historico: '/api/v1/dashboard/history', intervaloMs: 2000, timeoutMs: 8000, limites: { temperatura: 32, umidadeMinima: 30 } };
+const intervaloSegundos = CONFIG.intervaloMs / 1000;
 const DEMO = Object.freeze({temperatura:24.8,umidade:68,qualidadeAr:812,condicao:'Sensor de chuva seco',atualizadoEm:'2026-11-03T14:30:00-03:00',status:'demo'});
 const demoHistory = [21.2,21,21.5,22.1,22,22.7,23.6,23.4,24.3,24.1,25.2,24.8].map((v,i)=>({atualizadoEm:`2026-11-03T${String(i+3).padStart(2,'0')}:30:00-03:00`,temperatura:v,umidade:[77,78,76,74,75,73,71,72,70,71,67,68][i]}));
 const $=id=>document.getElementById(id); let series='temperatura', history=[], isDemo=true, busy=false, chartMessage='';
@@ -25,7 +26,11 @@ function adaptReading(r){
 }
 function renderExtra(r){
   $('pressao').textContent=format(r?.pressure_hpa)+' hPa';$('pressure-source').textContent=climateLabel(r?.pressure_source||(r?.pressure_hpa==null?'unavailable':'sensor'));
-  $('luz').textContent=format(r?.light_raw)+' ADC';
+  if (typeof r?.light_detected === 'boolean') {
+    $('luz').textContent = r.light_detected ? 'Claro' : 'Escuro';
+  } else {
+    $('luz').textContent = Number.isFinite(r?.light_raw) ? format(r.light_raw) + ' ADC' : 'Sem leitura';
+  }
   $('chuva').textContent=r?.rain_detected===true?'Molhado':r?.rain_detected===false?'Seco':'Sem leitura';
 }
 async function update(){
@@ -39,7 +44,7 @@ async function update(){
   $('notice').textContent=(d.status==='online'?'Leitura recebida pela API. ':'Sem leitura recebida nos últimos 2 minutos. Exibindo a última disponível. ')+
     'Dispositivo: '+d.raw.device_id+'. Temperatura: '+climateLabel(d.temperatureSource)+', umidade: '+climateLabel(d.humiditySource)+', pressão: '+climateLabel(d.pressureSource)+'. '+
     (d.raw.captured_at?'Horário informado pelo dispositivo: '+date(d.raw.captured_at)+'. ':'Dispositivo sem horário de captura; usamos o recebimento no servidor. ')+
-    (d.raw.status==='partial'?'Leitura parcial: campos ausentes aparecem como —. ':'')+'Consulta automática a cada 10 segundos.';
+    (d.raw.status==='partial'?'Leitura parcial: campos ausentes aparecem como —. ':'')+`Consulta automática a cada ${intervaloSegundos} segundos.`;
   try{
     const raw=await getJSON(CONFIG.historico);if(!Array.isArray(raw))throw new Error('Histórico inválido');
     history=raw.filter(r=>r.device_id===d.raw.device_id).map(adaptReading).map(r=>({atualizadoEm:r.atualizadoEm,temperatura:r.temperatura,umidade:r.umidade,temperatureSource:r.temperatureSource,humiditySource:r.humiditySource}));
@@ -49,7 +54,7 @@ async function update(){
   isDemo=true;history=demoHistory;chartMessage='Histórico ilustrativo · 03/11/2026';StationStatus(DEMO,true);MetricCards(DEMO);Alerts(DEMO);
   renderExtra({pressure_hpa:1012.8,light_raw:2200,rain_detected:false});
   $('notice').className='notice';$('notice').textContent=(error.status===404?'Ainda não há leituras no banco. ':'API indisponível ou resposta inválida. ')+
-  'Exibindo exemplos fixos de demonstração, sem conexão comprovada com sensores. Nova tentativa em 10 segundos.';
+  `Exibindo exemplos fixos de demonstração, sem conexão comprovada com sensores. Nova tentativa em ${intervaloSegundos} segundos.`;
  }finally{HistoryChart();busy=false;$('refresh').disabled=false;}
 }
 $('refresh').addEventListener('click',update);document.querySelectorAll('[data-series]').forEach(b=>b.addEventListener('click',()=>{series=b.dataset.series;document.querySelectorAll('[data-series]').forEach(t=>{t.classList.toggle('selected',t===b);t.setAttribute('aria-pressed',String(t===b));});HistoryChart();}));$('details').addEventListener('click',()=>{const expanded=$('details').getAttribute('aria-expanded')==='true';$('details').setAttribute('aria-expanded',String(!expanded));$('technical').hidden=expanded;});update();setInterval(update,CONFIG.intervaloMs);
