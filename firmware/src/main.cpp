@@ -5,6 +5,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_BMP280.h>
+#include <DHT.h>
 #include <math.h>
 #include <string.h>
 #include "secrets.h"
@@ -14,6 +15,7 @@ constexpr uint8_t SCL_PIN = 22;
 constexpr uint8_t LDR_PIN = 27;
 constexpr uint8_t MQ135_PIN = 35;
 constexpr uint8_t RAIN_PIN = 32;
+constexpr uint8_t DHT_PIN = 33;
 // Leituras observadas: 62–89 com gotas e 198–227 com a placa seca.
 constexpr int LIMITE_CHUVA = 140;  // abaixo disso = molhado
 constexpr unsigned long INTERVALO_LEITURA_MS = 500;
@@ -25,6 +27,7 @@ constexpr char MQTT_CLIENT_ID[] = "station-01";
 
 Adafruit_BME280 bme;
 Adafruit_BMP280 bmp(&Wire);
+DHT dht(DHT_PIN, DHT22);
 WiFiClient wifiClient;
 MQTTClient mqttClient(512);
 bool bmeDisponivel = false;
@@ -177,6 +180,7 @@ float valorSimulado(float base, float amplitude, unsigned long agora,
 
 void setup() {
   Serial.begin(115200);
+  dht.begin();
   delay(3000);
   Serial.println("Iniciando ClimaSense...");
 
@@ -193,7 +197,7 @@ void setup() {
     // BMP280 mede temperatura e pressão; não possui sensor de umidade.
     bmpDisponivel = bmp.begin(0x76) || bmp.begin(0x77);
     if (bmpDisponivel) {
-      Serial.println("BMP280 encontrado! Umidade não disponível neste modelo.");
+      Serial.println("BMP280 encontrado para temperatura e pressão.");
     } else {
       Serial.println("Aviso: não encontrei BME280 nem BMP280 nos endereços 0x76/0x77. Confira SDA/SCL/VIN/GND.");
     }
@@ -246,6 +250,12 @@ void loop() {
     pressao = bmp.readPressure() / 100.0F;
     origemTemperatura = "sensor";
     origemPressao = "sensor";
+  }
+
+  if (!isfinite(umidade) || umidade < 0.0F || umidade > 100.0F) {
+    // A biblioteca reaproveita a última amostra entre leituras do DHT22.
+    umidade = dht.readHumidity();
+    origemUmidade = "sensor";
   }
 
   // Valores de demonstração preenchem somente campos sem leitura física.
