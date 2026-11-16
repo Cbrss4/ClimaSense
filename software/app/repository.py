@@ -2,11 +2,50 @@ from contextlib import closing
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from app.database import connect_database, initialize_database
-from app.models import ReadingPayload, ReadingRecord
+from app.database import DEFAULT_DATABASE_PATH, connect_database, initialize_database
+from app.models import ReadingPayload, ReadingRecord, StationLocation
 
 DEFAULT_HISTORY_LIMIT = 100
 MAX_HISTORY_LIMIT = 500
+
+
+class StationLocationRepository:
+    def __init__(self, database_path: Path | None = None) -> None:
+        # O teste de bancada usa um banco de leituras temporário.
+        self.database_path = database_path or DEFAULT_DATABASE_PATH.with_name(
+            "station-locations.db"
+        )
+        with closing(connect_database(self.database_path)) as connection, connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS station_locations (
+                    device_id TEXT PRIMARY KEY NOT NULL,
+                    address TEXT NOT NULL,
+                    room TEXT NOT NULL
+                )
+                """
+            )
+
+    def get(self, device_id: str) -> StationLocation | None:
+        with closing(connect_database(self.database_path)) as connection:
+            row = connection.execute(
+                "SELECT address, room FROM station_locations WHERE device_id = ?",
+                (device_id,),
+            ).fetchone()
+        return StationLocation.model_validate(dict(row)) if row is not None else None
+
+    def save(self, device_id: str, location: StationLocation) -> StationLocation:
+        with closing(connect_database(self.database_path)) as connection, connection:
+            connection.execute(
+                """
+                INSERT INTO station_locations (device_id, address, room)
+                VALUES (?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    address = excluded.address, room = excluded.room
+                """,
+                (device_id, location.address, location.room),
+            )
+        return location
 
 
 def to_utc_iso(value: datetime) -> str:

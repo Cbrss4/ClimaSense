@@ -2,12 +2,109 @@
 // Altere somente estes endpoints para integrar o back-end. Não há acesso a sensores no navegador.
 const CONFIG = { atual: '/api/v1/readings/latest', historico: '/api/v1/dashboard/history', intervaloMs: 2000, timeoutMs: 8000, limites: { temperatura: 32, umidadeMinima: 30 } };
 const intervaloSegundos = CONFIG.intervaloMs / 1000;
+let locationState = null;
 const DEMO = Object.freeze({temperatura:24.8,umidade:68,qualidadeAr:812,condicao:'Sensor de chuva seco',atualizadoEm:'2026-11-03T14:30:00-03:00',status:'demo'});
 const demoHistory = [21.2,21,21.5,22.1,22,22.7,23.6,23.4,24.3,24.1,25.2,24.8].map((v,i)=>({atualizadoEm:`2026-11-03T${String(i+3).padStart(2,'0')}:30:00-03:00`,temperatura:v,umidade:[77,78,76,74,75,73,71,72,70,71,67,68][i]}));
 const $=id=>document.getElementById(id); let series='temperatura', history=[], isDemo=true, busy=false, chartMessage='';
 const format=n=>typeof n==='number'&&Number.isFinite(n)?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(n):'—';
 const date=d=>new Date(d).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-async function getJSON(url){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),CONFIG.timeoutMs);try{const response=await fetch(url,{signal:controller.signal,cache:'no-store',headers:{Accept:'application/json'}});if(!response.ok){const error=new Error('API indisponível');error.status=response.status;throw error;}return await response.json();}finally{clearTimeout(timer)}}
+async function getJSON(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CONFIG.timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: {Accept: 'application/json', ...options.headers},
+    });
+    if (!response.ok) {
+      const error = new Error('API indisponível');
+      error.status = response.status;
+      throw error;
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function renderLocation(deviceId, location) {
+  $('location-summary').textContent = location
+    ? `${location.room} · ${location.address} · ${deviceId}`
+    : `${deviceId} · Localização a configurar`;
+  $('location-toggle').textContent = location ? 'Editar localização' : 'Cadastrar localização';
+  const map = $('location-map');
+  map.hidden = !location;
+  if (location) {
+    const url = new URL('https://www.google.com/maps/search/');
+    url.searchParams.set('api', '1');
+    url.searchParams.set('query', location.address);
+    map.href = url.href;
+  } else {
+    map.removeAttribute('href');
+  }
+}
+
+async function updateStationLocation(deviceId) {
+  if (locationState?.deviceId === deviceId) return;
+  const endpoint = '/api/v1/station-location?' + new URLSearchParams({device_id: deviceId});
+  const state = {deviceId, endpoint};
+  locationState = state;
+  const editor = $('location-editor');
+  editor.hidden = true;
+  editor.open = false;
+  $('location-map').hidden = true;
+  $('location-message').textContent = '';
+  $('location-summary').textContent = deviceId
+    ? 'Buscando localização da estação…'
+    : 'Aguardando identificação da estação';
+  if (!deviceId) return;
+
+  try {
+    const location = await getJSON(endpoint);
+    if (locationState !== state) return;
+    renderLocation(deviceId, location);
+    $('location-address').value = location?.address ?? '';
+    $('location-room').value = location?.room ?? '';
+    $('location-save').disabled = false;
+    editor.hidden = false;
+  } catch {
+    if (locationState !== state) return;
+    locationState = null;
+    $('location-summary').textContent = 'Localização temporariamente indisponível';
+  }
+}
+
+$('location-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const state = locationState;
+  if (!state?.deviceId) return;
+  const address = $('location-address').value.trim();
+  const room = $('location-room').value.trim();
+  const message = $('location-message');
+  if (!address || !room) {
+    message.textContent = 'Preencha o endereço e a sala.';
+    return;
+  }
+  const button = $('location-save');
+  button.disabled = true;
+  message.textContent = 'Salvando…';
+  try {
+    const location = await getJSON(state.endpoint, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({address, room}),
+    });
+    if (locationState !== state) return;
+    renderLocation(state.deviceId, location);
+    message.textContent = 'Localização salva.';
+  } catch {
+    if (locationState === state) message.textContent = 'Falha ao salvar. Tente novamente.';
+  } finally {
+    if (locationState === state) button.disabled = false;
+  }
+});
 function validate(d){if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('Resposta inválida');for(const key of ['temperatura','umidade','qualidadeAr'])if(d[key]!=null&&(typeof d[key]!=='number'||!Number.isFinite(d[key])))throw new Error('Leitura inválida');if(d.umidade!=null&&(d.umidade<0||d.umidade>100))throw new Error('Umidade inválida');if(!['online','offline','demo'].includes(d.status))throw new Error('Status inválido');if(!Number.isFinite(Date.parse(d.atualizadoEm)))throw new Error('Data inválida');return d;}
 function StationStatus(d,demo){$('status').className='status '+(demo?'demo':d.status==='online'?'online':'offline');$('status').textContent=demo?'◌ Dados de demonstração':d.status==='online'?'● Online':'○ Sem conexão';$('updated').textContent=(demo?'Exemplo de leitura: ':'Última leitura: ')+date(d.atualizadoEm);}
 function climateLabel(source){return source==='simulated'?'Simulado':source==='sensor'?'Sensor físico':'Indisponível';}
@@ -40,6 +137,7 @@ async function update(){
   StationStatus(d,false);$('status').textContent=d.status==='online'?'● Dados recentes':'○ Sem leitura recente';
   $('updated').textContent='Recebido no servidor: '+date(d.atualizadoEm);
   MetricCards(d);Alerts(d);renderExtra(d.raw);
+  updateStationLocation(d.raw.device_id);
   $('notice').className='notice'+(d.status==='online'?' live':'');
   $('notice').textContent=(d.status==='online'?'Leitura recebida pela API. ':'Sem leitura recebida nos últimos 2 minutos. Exibindo a última disponível. ')+
     'Dispositivo: '+d.raw.device_id+'. Temperatura: '+climateLabel(d.temperatureSource)+', umidade: '+climateLabel(d.humiditySource)+', pressão: '+climateLabel(d.pressureSource)+'. '+
@@ -51,6 +149,7 @@ async function update(){
     chartMessage=history.some(r=>r.temperatureSource==='simulated'||r.humiditySource==='simulated')?'Histórico com dados simulados identificados · 12 horas':'Histórico da API · 12 horas · uma leitura por janela de 5 min';
   }catch{history=[];chartMessage='Histórico indisponível · leitura atual preservada';}
  }catch(error){
+  updateStationLocation(null);
   isDemo=true;history=demoHistory;chartMessage='Histórico ilustrativo · 03/11/2026';StationStatus(DEMO,true);MetricCards(DEMO);Alerts(DEMO);
   renderExtra({pressure_hpa:1012.8,light_raw:2200,rain_detected:false});
   $('notice').className='notice';$('notice').textContent=(error.status===404?'Ainda não há leituras no banco. ':'API indisponível ou resposta inválida. ')+

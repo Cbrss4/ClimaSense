@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.main import app, get_repository
+from app.main import app, get_location_repository, get_repository
 from app.models import READING_PAYLOAD_ADAPTER
-from app.repository import ReadingRepository
+from app.repository import ReadingRepository, StationLocationRepository
 
 
 def test_dashboard_and_assets_are_served():
@@ -14,9 +14,36 @@ def test_dashboard_and_assets_are_served():
         assert page.status_code == 200
         assert 'ClimaSense' in page.text
         assert 'theme-select' in page.text
+        assert 'location-form' in page.text
         for asset in ['style.css', 'app.js', 'theme.js']:
             assert client.get('/assets/' + asset).status_code == 200
         assert client.get('/assets/../app/settings.py').status_code == 404
+
+
+def test_station_location_is_validated_and_persisted_per_device(tmp_path):
+    database_path = tmp_path / 'locations.db'
+    app.dependency_overrides[get_location_repository] = lambda: StationLocationRepository(
+        database_path
+    )
+    endpoint = '/api/v1/station-location'
+    station = {'device_id': 'station-01'}
+    location = {'address': 'Praça da Sé, São Paulo - SP', 'room': 'Laboratório 2'}
+    try:
+        with TestClient(app) as client:
+            assert client.get(endpoint, params=station).json() is None
+            assert client.put(
+                endpoint, params=station, json={**location, 'room': '   '}
+            ).status_code == 422
+            assert client.put(
+                endpoint, params=station, json={**location, 'room': ' Laboratório 2 '}
+            ).json() == location
+            assert client.get(endpoint, params=station).json() == location
+            assert client.get(endpoint, params={'device_id': 'station-02'}).json() is None
+            updated = {**location, 'room': 'Sala 12'}
+            assert client.put(endpoint, params=station, json=updated).json() == updated
+            assert client.get(endpoint, params=station).json() == updated
+    finally:
+        app.dependency_overrides.pop(get_location_repository)
 
 
 def test_dashboard_history_covers_twelve_hours_and_keeps_partial_values(tmp_path):

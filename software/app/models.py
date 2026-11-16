@@ -15,6 +15,13 @@ DeviceId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)
 ClimateSource = Literal["sensor", "simulated", "unavailable"]
 
 
+class StationLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    address: str = Field(min_length=1, max_length=160)
+    room: str = Field(min_length=1, max_length=80)
+
+
 class ReadingPayloadBase(BaseModel):
     """Campos comuns às versões aceitas do contrato de dados."""
 

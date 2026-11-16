@@ -7,11 +7,12 @@ from fastapi import Depends, FastAPI, HTTPException, Path, Query, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.models import ReadingRecord
+from app.models import DeviceId, ReadingRecord, StationLocation
 from app.repository import (
     DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
     ReadingRepository,
+    StationLocationRepository,
 )
 
 app = FastAPI(title="ClimaSense", version="0.1.0")
@@ -23,6 +24,33 @@ def get_repository() -> ReadingRepository:
 
 
 RepositoryDependency = Annotated[ReadingRepository, Depends(get_repository)]
+
+
+@lru_cache
+def get_location_repository() -> StationLocationRepository:
+    return StationLocationRepository()
+
+
+LocationRepositoryDependency = Annotated[
+    StationLocationRepository, Depends(get_location_repository)
+]
+
+
+@app.get("/api/v1/station-location")
+def station_location(
+    device_id: Annotated[DeviceId, Query()],
+    repository: LocationRepositoryDependency,
+) -> StationLocation | None:
+    return repository.get(device_id)
+
+
+@app.put("/api/v1/station-location")
+def save_station_location(
+    device_id: Annotated[DeviceId, Query()],
+    location: StationLocation,
+    repository: LocationRepositoryDependency,
+) -> StationLocation:
+    return repository.save(device_id, location)
 
 
 @app.get("/health")
